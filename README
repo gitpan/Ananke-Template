@@ -1,4 +1,4 @@
-Ananke::Template version 1.0
+Ananke::Template version 1.1
 ============================
 
 Based in Template ToolKit
@@ -13,6 +13,8 @@ To install this module type the following:
    make
    make test
    make install
+	( echo 'Your name <your@email.com> '; echo `/bin/uname -a` ) \
+	| mail nattis@anankeit.com.br
 
 COPYRIGHT AND LICENCE
 

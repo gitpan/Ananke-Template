@@ -3,12 +3,12 @@
 package Ananke::Template;
 use strict;
 
-my $VERSION = '1.0'; 
+my $VERSION = '1.1'; 
 my @my;
 
 # Inicia modulo
 sub new {
-	my($self,$templ_dir) = @_;
+	my($self,$templ_dir,$to_file) = @_;
 
 	# Grava dados
 	bless {
@@ -18,9 +18,10 @@ sub new {
 
 # Processa página
 sub process {
-	my($self,$file,$vars) = @_;
+	my($self,$file,$vars,$to_file) = @_;
 	my($fdata,$output,$my);
 	$self->{TEMPL_FILE} = $file;
+	$self->{TO_FILE} = $to_file;
 	@my = ();
 
 	$fdata = $self->load();
@@ -32,19 +33,27 @@ sub process {
 
 	$output = $my.$output;
 
-	open(FH,">>/tmp/filex");
-	syswrite(FH,$output);
-	close(FH);
-
 	#print $output;
-	eval $output;
+	eval $output;	
 	print $@;
+
+	#open (FH,">/tmp/filexx");
+	#syswrite(FH,$output);
+	#close(FH);
 }
 
 # Trata arquivo
 sub parse {
 	my($self,$fdata,$vars) = @_;
 	my(@t,$ndata,$output);
+	my $outype;
+	
+	if ($self->{TO_FILE}) {
+		$output .= "open(OUTFILE,\">".$self->{TO_FILE}."\");";
+		$outype = "OUTFILE";
+	} else {
+		$outype = "STDOUT";
+	}
 
 	# Transfere dados para vars
 	foreach (keys %{$vars}) {
@@ -72,7 +81,7 @@ sub parse {
 			$t[2] =~ s/^\s+?(.*?)\s+?$/$1/g;
 
 			if ($t[1]) {
-				$t[1] = "\nprint \"".&AddSlashes($t[1])."\";";
+				$t[1] = "\nsyswrite($outype,\"".&AddSlashes($t[1])."\");";
 			}
 		
 			# Retira espaços em branco no começo e final da var
@@ -87,8 +96,11 @@ sub parse {
 				$t[3] = "} ".$t[3] if ($t[3] eq "elsif");
 			
 				# Trata todos os tipos de vars
-				while ($t[4] =~ /([\&\|\s\>\<\=\%]+)?([a-zA-Z0-9\"\'\_\.\+\-]+)([\&\|\s\>\<\=\%]+)?/g) {
+				while ($t[4] =~ /([\&\|\s\>\<\=\%\!]+)?([a-zA-Z0-9\"\'\_\.\+\-]+)([\&\|\s\>\<\=\%\!]+)?/g) {
 					$t[5] = $1; $t[6] = $2; $t[7] = $3;
+					
+					$t[5] =~ s/\=\=/eq/g; $t[5] =~ s/\!\=/ne/g;
+					$t[7] =~ s/\=\=/eq/g; $t[7] =~ s/\!\=/ne/g;
 
 					# vars scalares
 					if ($t[6] =~ /^([a-zA-Z\_]+)\.([a-zA-Z\_]+)$/) {
@@ -126,8 +138,9 @@ sub parse {
 				$t[3] = $2;
 	
 				# Trata opcoes do for
-				while ($t[3] =~ /([\;])?([a-zA-Z0-9\_\.\+\-]+)([\<\=\>]+)?/g) {
+				while ($t[3] =~ /([\;])?([a-zA-Z0-9\_\.\+\-]+)([\<\=\>\!]+)?/g) {
 					$t[4] = $2; $t[5] = $3; $t[6] = $1;
+					$t[6] =~ s/\=\=/eq/g; $t[6] =~ s/\!\=/ne/g;
 					
 					# Trata hash
 					if ($t[4] =~ /([a-zA-Z]+)\.([a-zA-Z]+)/) {
@@ -193,19 +206,22 @@ sub parse {
 
 			# Trata hash
 			elsif ($t[2] =~ /([a-zA-Z\_]+)\.([a-zA-Z\_]+)/) {
-				$t[2] = "\nprint \$T".$1."->{".$2."};";
+				$t[2] = "\nsyswrite($outype,\$T".$1."->{".$2."});";
 				$self->my("\$T".$1."->{".$2."}");
 			}
 
 			# Trata string
 			elsif ($t[2] =~ /^[a-zA-Z0-9\_]$/) {
 				$self->my("\$T".$t[2]);
-				$t[2] = "\nprint \$T".$t[2].";";
+				$t[2] = "\nsyswrite($outype,\$T".$t[2].");";
 			}
 
 			# Seta vars
-			elsif ($t[2] =~ /^([a-zA-Z0-9\_\+\-]+)\s?([\=\>\<]+)?\s?[\"]?(.*)?[\"]?$/) {
+			elsif ($t[2] =~ /^([a-zA-Z0-9\_\+\-]+)\s?([\=\>\<\!]+)?\s?[\"]?(.*)?[\"]?$/) {
 				$t[3] = $1; $t[4] = $2; $t[5] = $3;
+				$t[4] =~ s/\=\=/eq/g; $t[4] =~ s/\!\=/ne/g;
+
+				$t[5] =~ s/"$//g if ($t[5] =~ /"$/);
 
 				# Trata variaveis unica
 				if ($t[3] && !$t[5]) {
@@ -213,7 +229,7 @@ sub parse {
 					# Variaveis
 					if ($t[3] =~ /^[a-zA-Z0-9\_]+$/) {
 						$self->my("\$T".$t[3]);
-						$t[2] = "\nprint \$T".$t[3].";";
+						$t[2] = "\nsyswrite($outype,\$T".$t[3].");";
 					}
 					
 					# Variaveis especiais
@@ -235,10 +251,11 @@ sub parse {
 
 		# Outros
 		elsif ($fdata =~ s/^(.*)$//sx) {
-			$output .= "\nprint \"".&AddSlashes($1)."\";\n";
+			$output .= "\nsyswrite($outype,\"".&AddSlashes($1)."\");\n";
 		}
 	}
 
+	$output .= "close(OUTFILE);\n" if ($self->{TO_FILE});
 	return $output;
 }
 
@@ -305,9 +322,9 @@ sub load {
 	if (open(FH,$templ_path)) {
 		$fdata = <FH>;
 		
-		open(FH2,">>/tmp/filexx");
-		syswrite(FH2,$fdata);
-		close(FH2);
+		#open(FH2,">>/tmp/filexx");
+		#syswrite(FH2,$fdata);
+		#close(FH2);
 
 		# Fecha arquivo
 		close(FH);

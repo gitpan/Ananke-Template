@@ -1,4 +1,11 @@
 Revision history for Perl extension Ananke::Template.
 
+1.1 Tue Mar 26 14:20:25 BRT 2002
+	- remove open(FH,">>/tmp/filex");
+	- type outmsg now is syswrite
+	- fix =! and ==
+	- new: you can change STDOUT to FD
+	- fix last " in new vars string
+
 1.0  Mon Mar  4 19:21:23 2002
 	- First stable version
