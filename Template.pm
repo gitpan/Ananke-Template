@@ -3,8 +3,19 @@
 package Ananke::Template;
 use strict;
 
-my $VERSION = '1.1'; 
+my $VERSION = '1.2'; 
 my @my;
+
+# Processo para facilitar o print do template
+sub view_template {
+	my ($template_dir,$template_file,$vars,$to_file) = @_;
+
+	my $template = new Ananke::Template($template_dir);
+	$template->process($template_file,$vars,$to_file);
+
+	undef $template_dir; undef $template_file; undef $vars;
+	undef $template; undef $to_file;
+}
 
 # Inicia modulo
 sub new {
@@ -96,26 +107,31 @@ sub parse {
 				$t[3] = "} ".$t[3] if ($t[3] eq "elsif");
 			
 				# Trata todos os tipos de vars
-				while ($t[4] =~ /([\&\|\s\>\<\=\%\!]+)?([a-zA-Z0-9\"\'\_\.\+\-]+)([\&\|\s\>\<\=\%\!]+)?/g) {
+				while ($t[4] =~ /([\&\|\s\>\<\=\%\!]+)?([\w\"\'\.\+\-]+)([\&\|\s\>\<\=\%\!]+)?/g) {
 					$t[5] = $1; $t[6] = $2; $t[7] = $3;
 					
 					$t[5] =~ s/\=\=/eq/g; $t[5] =~ s/\!\=/ne/g;
 					$t[7] =~ s/\=\=/eq/g; $t[7] =~ s/\!\=/ne/g;
 
 					# vars scalares
-					if ($t[6] =~ /^([a-zA-Z\_]+)\.([a-zA-Z\_]+)$/) {
+					if ($t[6] =~ /^(\w+)\.(\w+)$/) {
 						$t[6] = "\$T".$1."->{$2}";
 						$self->my("\$T".$1."->{$2}");
 					}
 				
+					# Numeros
+					elsif ($t[6] =~ /^([\d]+)$/) {
+						$t[6] = $1;
+					}
+				
 					# Demais variaveis
-					elsif ($t[6] =~ /^([a-zA-Z\_]+)$/) {
+					elsif ($t[6] =~ /^(\w+)$/) {
 						$self->my("\$T".$t[6]);
 						$t[6] = "\$T".$t[6];
 					}
 					
-					# String ou numeros
-					elsif ($t[6] =~ /^([a-zA-Z0-9\"\']+)$/) {
+					# String
+					elsif ($t[6] =~ /^([\w\"\']+)$/) {
 						$t[6] = $1;
 					}
 					
@@ -133,29 +149,30 @@ sub parse {
 			}
 
 			# Trata for
-			elsif ($t[2] =~ /(FOR) (.*)/) {
+			elsif ($t[2] =~ /(FOR)\s(.*)/) {
 				$t[8] = $1;
 				$t[3] = $2;
 	
 				# Trata opcoes do for
-				while ($t[3] =~ /([\;])?([a-zA-Z0-9\_\.\+\-]+)([\<\=\>\!]+)?/g) {
+				while ($t[3] =~ /([\;])?([\w\.\+\-]+)([\<\=\>\!]+)?/g) {
 					$t[4] = $2; $t[5] = $3; $t[6] = $1;
 					$t[6] =~ s/\=\=/eq/g; $t[6] =~ s/\!\=/ne/g;
 					
+					# Trata numeros
+					if ($t[4] =~ /^[0-9]+$/) {
+						$t[4] = $t[4];
+					}
+					
 					# Trata hash
-					if ($t[4] =~ /([a-zA-Z]+)\.([a-zA-Z]+)/) {
+					elsif ($t[4] =~ /^(\w+)\.(\w+)$/) {
 						$self->my("\$T".$1."->{$2}");
 						$t[4] = "\$T".$1."->{$2}";
 					} 
 					
 					# Trata vars
 					else {
-						if ($t[4] =~ /[0-9]+/) {
-							$t[4] = $t[4];
-						} else {
-							$self->my("\$T".$t[4]);
-							$t[4] = "\$T".$t[4];
-						}
+						$self->my("\$T".$t[4]);
+						$t[4] = "\$T".$t[4];
 					}
 
 					$t[7] .= "$t[6]$t[4]$t[5]";
@@ -201,23 +218,23 @@ sub parse {
 			# Adiciona include
 			elsif ($t[2] =~ /^INCLUDE\s+(.*)$/) {
 			   $ndata = $self->load($1);
-				$t[2] = $self->parse($ndata);
+				$t[2] = $self->parse($ndata,$vars);
 			}
 
 			# Trata hash
-			elsif ($t[2] =~ /([a-zA-Z\_]+)\.([a-zA-Z\_]+)/) {
+			elsif ($t[2] =~ /(\w+)\.(\w+)/) {
 				$t[2] = "\nsyswrite($outype,\$T".$1."->{".$2."});";
 				$self->my("\$T".$1."->{".$2."}");
 			}
 
 			# Trata string
-			elsif ($t[2] =~ /^[a-zA-Z0-9\_]$/) {
+			elsif ($t[2] =~ /^\w$/) {
 				$self->my("\$T".$t[2]);
 				$t[2] = "\nsyswrite($outype,\$T".$t[2].");";
 			}
 
 			# Seta vars
-			elsif ($t[2] =~ /^([a-zA-Z0-9\_\+\-]+)\s?([\=\>\<\!]+)?\s?[\"]?(.*)?[\"]?$/) {
+			elsif ($t[2] =~ /^([\w\+\-]+)\s?([\=\>\<\!]+)?\s?[\"]?(.*)?[\"]?$/) {
 				$t[3] = $1; $t[4] = $2; $t[5] = $3;
 				$t[4] =~ s/\=\=/eq/g; $t[4] =~ s/\!\=/ne/g;
 
@@ -227,13 +244,13 @@ sub parse {
 				if ($t[3] && !$t[5]) {
 					
 					# Variaveis
-					if ($t[3] =~ /^[a-zA-Z0-9\_]+$/) {
+					if ($t[3] =~ /^\w+$/) {
 						$self->my("\$T".$t[3]);
 						$t[2] = "\nsyswrite($outype,\$T".$t[3].");";
 					}
 					
 					# Variaveis especiais
-					elsif ($t[3] =~ /^[a-zA-Z0-9\_\+\-]+$/) {
+					elsif ($t[3] =~ /^[\w\+\-]+$/) {
 						$self->my("\$T".$t[3]);
 						$t[2] = "\n\$T".$t[3].";";
 					}
@@ -392,11 +409,18 @@ Perl interface into the Ananke::Template.
 	};
 	$template_vars->{SCRIPT_NAME} = "file.pl";
 
+	# Method 1 - print
 	# Create template object
 	my $template = new Ananke::Template($template_dir);
 
 	# Run Template
 	$template->process($template_file,$template_vars);
+
+	# Method 2 - print
+	&Ananke::Template::view_template($template_dir,$template_file,$template_vars);
+
+	# Method 3 - write in file
+	&Ananke::Template::view_template($template_dir,$template_file,$template_vars,"/tmp/file.html");
 
 =head2 template.html:
 

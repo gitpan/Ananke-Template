@@ -1,6 +1,11 @@
 Revision history for Perl extension Ananke::Template.
 
-1.1 Tue Mar 26 14:20:25 BRT 2002
+1.2  Apr  3 14:36:45 BRT 2002
+	- optimezed regex
+	- fix variables with number
+	- fix variables in include
+
+1.1  Tue Mar 26 14:20:25 BRT 2002
 	- remove open(FH,">>/tmp/filex");
 	- type outmsg now is syswrite
 	- fix =! and ==
