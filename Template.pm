@@ -3,7 +3,7 @@
 package Ananke::Template;
 use strict;
 
-our $VERSION = '1.3'; 
+our $VERSION = '1.4'; 
 my @my;
 
 # Processo para facilitar o print do template
@@ -55,8 +55,8 @@ sub process {
 	}
 
 	$output = $my.$output;
-	
 	$return = eval $output;
+	#print $output."\n";
 
 	print $@ if ($@);
 
@@ -96,8 +96,8 @@ sub parse {
 	while ($fdata) {
 
 		# Verifica parse
-		if ($fdata =~ s/^(.*?)?(?:$Tstart(.*?)$Tend)//sx) {
-	
+		if ($fdata =~ s/^(.*?)?(?:$Tstart\s?(.*?)\s?$Tend)//sx) {
+
 			$t[1] = $1; $t[2] = $2;
 			$t[1] =~ s/[\n|\s]//g if ($t[1] =~ /^[\n\s]+$/);
 
@@ -121,18 +121,26 @@ sub parse {
 				$t[3] = "} ".$t[3] if ($t[3] eq "elsif");
 		
 				# Trata todos os tipos de vars
-				while ($t[4] =~ /([\&\|\s\>\<\=\%\!]+)?([\w\"\'\.\+\-]+)([\&\|\s\>\<\=\%\!]+)?/g) {
+				while ($t[4] =~ /([\s\>\<\=\%\!\&\|]+)?([\&\;\w\"\'\.\+\-\/\^\$\á\é]+)([\&\>\<\=\%\!\|\&]+)?/g) {
 					$t[5] = $1; $t[6] = $2; $t[7] = $3;
-					
+
+					# Verifica qual metodo de comparacao deve usar
 					$t[5] =~ s/\=\=/eq/g; $t[5] =~ s/\!\=/ne/g;
 					$t[7] =~ s/\=\=/eq/g; $t[7] =~ s/\!\=/ne/g;
 
 					# vars scalares
-					if ($t[6] =~ /^(\w+)\.(\w+)$/) {
-						$t[6] = "\$T".$1."->{$2}";
+					#if ($t[6] =~ /^(\w+)\.(\w+)$/) {
+					#	$t[6] = "\$T".$1."->{$2}";
+					#	$self->my("\$T".$1."->{$2}");
+					#}
+
+  	        		# Trata hash
+         		if ($t[6] =~ /(\w+)\.(\w+).?(\w+)?/) {
 						$self->my("\$T".$1."->{$2}");
+		           	$t[6]  = "\$T".$1."->{".$2."}";
+            		$t[6] .= "->{".$3."}" if ($3);
 					}
-				
+
 					# Numeros
 					elsif ($t[6] =~ /^([\d]+)$/) {
 						$t[6] = $1;
@@ -157,6 +165,12 @@ sub parse {
 				}
 
 				$t[2] = "\n".$t[3]." (".$t[8].") {";
+
+				# Verifica que tipo de comparacao deve usar
+				if ($t[2] =~ /\s(eq|ne)\s\//) {
+					if ($1 eq "eq") { $t[2] =~ s/ eq / =~ /g; }
+					elsif ($1 eq "ne") { $t[2] =~ s/ ne / !~ /g; }
+				}
 
 				undef $t[3]; undef $t[4]; undef $t[5];
 				undef $t[6]; undef $t[7]; undef $t[8];
@@ -204,15 +218,20 @@ sub parse {
 				# Seta vars do if
 				$t[3] = $1; $t[4] = $2; $t[5] = $3;
 
-				# Verifica se é hash
+				# Verifica se é array
 				if (ref $vars->{$t[5]} eq "ARRAY") {
-					$t[2] = "\n".lc($1)." my \$T$2 (\@{\$T$3}) {";
-					$self->my("\@T$3");
+					$t[2] = "\n".lc($t[3])." my \$T$t[4] (\@{\$T$t[5]}) {";
+					$self->my("\@T$t[5]");
+				}
+
+				# Verifica se e' multi-array
+				elsif ($t[5] =~ /^(.*)\.(.*)$/) {
+					$t[2] = "\n".lc($t[3])." my \$T$t[4] (\@{\$T$1->\{$2\}}) {";
 				}
 
 				# Caso nao exista array
 				else {
-					$t[2] = "\n".lc($1)." my \$T$2 (\@\{0\}) {";
+					$t[2] = "\n".lc($t[3])." my \$T$t[4] (\@\{0\}) {";
 				}
 
 				# apaga vars do if
@@ -231,8 +250,17 @@ sub parse {
 
 			# Adiciona include
 			elsif ($t[2] =~ /^INCLUDE\s+(.*)$/) {
-			   $ndata = $self->load($1);
-				$t[2] = $self->parse($ndata,$vars);
+				$t[3] = $1;
+
+				$t[3] =~ s/^\!(.*)$/$vars->{$1}/g;
+			
+				# Verifica se arquivo existe para dar include
+				if (-f $self->{TEMPL_DIR}."/".$t[3]) {
+				   $ndata = $self->load($t[3]);
+					$t[2] = $self->parse($ndata,$vars);
+				} else {
+					$t[2] = undef;
+				}
 			}
 
 			# Trata hash
