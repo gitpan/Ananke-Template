@@ -3,15 +3,18 @@
 package Ananke::Template;
 use strict;
 
-my $VERSION = '1.2'; 
+our $VERSION = '1.3'; 
 my @my;
 
 # Processo para facilitar o print do template
 sub view_template {
 	my ($template_dir,$template_file,$vars,$to_file) = @_;
+	my $return;
 
 	my $template = new Ananke::Template($template_dir);
-	$template->process($template_file,$vars,$to_file);
+	$return = $template->process($template_file,$vars,$to_file);
+
+	return $return if ($to_file == 1);
 
 	undef $template_dir; undef $template_file; undef $vars;
 	undef $template; undef $to_file;
@@ -30,23 +33,34 @@ sub new {
 # Processa página
 sub process {
 	my($self,$file,$vars,$to_file) = @_;
-	my($fdata,$output,$my);
+	my($fdata,$output,$my,$return);
 	$self->{TEMPL_FILE} = $file;
+	
+	# Retorna em var, sprintf
+	if ($to_file == 1) {
+		$self->{TO_RETURN} = 1;
+		undef $to_file;
+	}
+	
 	$self->{TO_FILE} = $to_file;
 	@my = ();
 
 	$fdata = $self->load();
 	$output = $self->parse($fdata,$vars);
+
+	#$my = "my \$return;\n";
 	
 	foreach (@my) {
 		$my .=  $_->{value};
 	}
 
 	$output = $my.$output;
+	
+	$return = eval $output;
 
-	#print $output;
-	eval $output;	
-	print $@;
+	print $@ if ($@);
+
+	return $return if ($self->{TO_RETURN});
 
 	#open (FH,">/tmp/filexx");
 	#syswrite(FH,$output);
@@ -97,7 +111,7 @@ sub parse {
 		
 			# Retira espaços em branco no começo e final da var
 			$t[2] =~ s/^[ ]+?(.*)[ ]+?$/$1/s;
-			
+		
 			# Trata if e elsif
 			if ($t[2] =~ /^(IF|ELSIF|UNLESS)\s+(.*)$/i) {
 				$t[3] = lc($1);
@@ -105,7 +119,7 @@ sub parse {
 				$t[4] =~ s/AND/\&\&/g; $t[4] =~ s/OR/\|\|/g;
 			
 				$t[3] = "} ".$t[3] if ($t[3] eq "elsif");
-			
+		
 				# Trata todos os tipos de vars
 				while ($t[4] =~ /([\&\|\s\>\<\=\%\!]+)?([\w\"\'\.\+\-]+)([\&\|\s\>\<\=\%\!]+)?/g) {
 					$t[5] = $1; $t[6] = $2; $t[7] = $3;
@@ -222,9 +236,14 @@ sub parse {
 			}
 
 			# Trata hash
-			elsif ($t[2] =~ /(\w+)\.(\w+)/) {
-				$t[2] = "\nsyswrite($outype,\$T".$1."->{".$2."});";
-				$self->my("\$T".$1."->{".$2."}");
+			elsif ($t[2] =~ /(\w+)\.(\w+).?(\w+)?/) {
+				$t[10]  = "\$T".$1."->{".$2."}";
+				$t[10] .= "->{".$3."}" if ($3);
+
+				$t[2] = "\nsyswrite($outype,".$t[10].");";
+				$self->my($t[10]);
+
+				undef $t[10];
 			}
 
 			# Trata string
@@ -273,6 +292,7 @@ sub parse {
 	}
 
 	$output .= "close(OUTFILE);\n" if ($self->{TO_FILE});
+	$output =~ s/syswrite\(STDOUT,/\$return .= sprintf(/g if ($self->{TO_RETURN});
 	return $output;
 }
 
@@ -422,6 +442,10 @@ Perl interface into the Ananke::Template.
 	# Method 3 - write in file
 	&Ananke::Template::view_template($template_dir,$template_file,$template_vars,"/tmp/file.html");
 
+	# Method 4 - return to variable
+	my $return = Ananke::Template::view_template($template_dir,$template_file,$template_vars,1);
+	print $return;
+
 =head2 template.html:
 
 	[% hello %]
@@ -508,6 +532,5 @@ Enclosed block is processed if the condition is true / false.
 =cut
 
 # Data inicio: Thu Feb 21 16:19:18 BRT 2002
-# Desenvolvido por: Udlei Nattis <nattis@anankeit.com.br>
-
+# Desenvolvido por: Udlei Nattis <nattis@anankeit.com.br
 
